@@ -1,0 +1,311 @@
+//@version=6
+
+//──────────────────────────────────────────────────────────────────────────────
+// ORB Opening Range Box
+// Author: Yulien
+// Version: 1.0.0
+// Description: Automatically draws the opening range and provides confirmed
+// 5-minute breakout alerts above or below the range.
+//──────────────────────────────────────────────────────────────────────────────
+
+indicator(
+     title = "ORB Opening Range Box — by Yulien",
+     shorttitle = "ORB Box",
+     overlay = true,
+     max_boxes_count = 1,
+     max_labels_count = 200)
+
+//──────────────────────────────────────────────────────────────────────────────
+// Supported chart context
+//
+// The rectangle remains available on standard, time-based intraday charts.
+// The alert engine evaluates every confirmed 5-minute candle, so it remains
+// available only when the chart timeframe is 5 minutes or lower. On higher
+// chart timeframes, the script keeps the rectangle and enters visual-only mode.
+//──────────────────────────────────────────────────────────────────────────────
+
+bool supportedChartContext = chart.is_standard and timeframe.isintraday and not timeframe.isticks
+bool fiveMinuteSignalsAvailable = false
+
+if supportedChartContext
+    fiveMinuteSignalsAvailable := timeframe.in_seconds() <= timeframe.in_seconds("5")
+
+if not chart.is_standard
+    runtime.error("ORB requires a standard chart that uses actual market OHLC prices.")
+
+if not timeframe.isintraday or timeframe.isticks
+    runtime.error("ORB rectangle requires a time-based intraday chart.")
+
+//──────────────────────────────────────────────────────────────────────────────
+// Inputs — ORB Rectangle
+//──────────────────────────────────────────────────────────────────────────────
+
+string orbTimeframe = input.timeframe(
+     defval = "15",
+     title = "Opening range timeframe",
+     options = ["15", "30"],
+     group = "ORB Rectangle")
+
+color fillColor = input.color(
+     defval = color.new(color.rgb(54, 9, 164), 85),
+     title = "Fill color",
+     group = "ORB Rectangle")
+
+color borderColor = input.color(
+     defval = color.rgb(54, 9, 164),
+     title = "Border color",
+     group = "ORB Rectangle")
+
+int borderWidth = input.int(
+     defval = 1,
+     title = "Border width",
+     minval = 1,
+     maxval = 5,
+     group = "ORB Rectangle")
+
+int rightSpaceBars = input.int(
+     defval = 3,
+     title = "Dynamic right border spacing (bars)",
+     minval = 0,
+     maxval = 100,
+     group = "ORB Rectangle")
+
+//──────────────────────────────────────────────────────────────────────────────
+// Inputs — Alerts
+//──────────────────────────────────────────────────────────────────────────────
+
+bool enableUpperAlert = input.bool(
+     defval = true,
+     title = "Enable upper breakout alert",
+     group = "5M Alerts")
+
+bool enableLowerAlert = input.bool(
+     defval = true,
+     title = "Enable lower breakout alert",
+     group = "5M Alerts")
+
+bool showSignalMarkers = input.bool(
+     defval = false,
+     title = "Show test markers",
+     tooltip = "Displays confirmed breakouts for the current day. Useful for validating signals during Bar Replay.",
+     group = "5M Alerts")
+
+//──────────────────────────────────────────────────────────────────────────────
+// Operating mode status
+//──────────────────────────────────────────────────────────────────────────────
+
+var table signalStatusTable = table.new(
+     position = position.top_right,
+     columns = 1,
+     rows = 1,
+     frame_color = color.orange,
+     frame_width = 1)
+
+if barstate.islast
+    if fiveMinuteSignalsAvailable
+        table.clear(signalStatusTable, 0, 0, 0, 0)
+    else
+        table.cell(
+             table_id = signalStatusTable,
+             column = 0,
+             row = 0,
+             text = "ORB rectangle active\n5M alerts and markers are unavailable on " + timeframe.period + ".\nUse a chart timeframe of 5 minutes or lower.",
+             text_color = color.black,
+             text_size = size.small,
+             bgcolor = color.new(color.orange, 10))
+
+//──────────────────────────────────────────────────────────────────────────────
+// Opening range calculation
+//
+// This function runs inside the selected ORB timeframe.
+//
+// When a new ORB-timeframe candle begins, the previous candle is confirmed.
+// If that previous candle began at 09:30, its high and low are permanently fixed.
+//
+// hour() and minute() use the symbol exchange timezone by default.
+//──────────────────────────────────────────────────────────────────────────────
+
+f_openingRange() =>
+    var float confirmedHigh = na
+    var float confirmedLow = na
+    var int openingTime = na
+
+    bool requestedNewDay = ta.change(time("D")) != 0
+
+    if requestedNewDay
+        confirmedHigh := na
+        confirmedLow := na
+        openingTime := na
+
+    bool requestedBarAdvanced = ta.change(time) != 0
+    bool previousBarIsOpening = false
+
+    if requestedBarAdvanced and not na(time[1])
+        previousBarIsOpening := hour(time[1]) == 9 and minute(time[1]) == 30
+
+    if previousBarIsOpening
+        confirmedHigh := high[1]
+        confirmedLow := low[1]
+        openingTime := time[1]
+
+    [time, confirmedHigh, confirmedLow, openingTime]
+
+// lookahead_on does not introduce future prices because the published levels
+// come exclusively from high[1] and low[1], which belong to a fully closed bar.
+[requestedTime, rangeHigh, rangeLow, rangeOpeningTime] = request.security(
+     symbol = syminfo.tickerid,
+     timeframe = orbTimeframe,
+     expression = f_openingRange(),
+     gaps = barmerge.gaps_off,
+     lookahead = barmerge.lookahead_on)
+
+//──────────────────────────────────────────────────────────────────────────────
+// Rectangle creation and updates
+//──────────────────────────────────────────────────────────────────────────────
+
+var box orbBox = na
+var array<label> signalLabels = array.new<label>()
+
+bool chartNewDay = ta.change(time("D")) != 0
+
+if chartNewDay
+    if not na(orbBox)
+        box.delete(orbBox)
+        orbBox := na
+
+    for signalLabel in signalLabels
+        label.delete(signalLabel)
+    array.clear(signalLabels)
+
+bool requestedTimeAdvanced = ta.change(requestedTime) != 0
+bool newConfirmedRange = false
+
+if requestedTimeAdvanced and not na(rangeOpeningTime)
+    if na(rangeOpeningTime[1]) or rangeOpeningTime != rangeOpeningTime[1]
+        newConfirmedRange := true
+
+// The right border is projected using the chart bar duration.
+int chartBarDurationMs = time_close - time
+int dynamicRightTime = time_close + rightSpaceBars * chartBarDurationMs
+
+if newConfirmedRange
+    if not na(orbBox)
+        box.delete(orbBox)
+
+    orbBox := box.new(
+         left = rangeOpeningTime,
+         top = rangeHigh,
+         right = dynamicRightTime,
+         bottom = rangeLow,
+         xloc = xloc.bar_time,
+         border_color = borderColor,
+         border_width = borderWidth,
+         bgcolor = fillColor)
+
+if not na(orbBox)
+    box.set_right(orbBox, dynamicRightTime)
+    box.set_top(orbBox, rangeHigh)
+    box.set_bottom(orbBox, rangeLow)
+    box.set_border_color(orbBox, borderColor)
+    box.set_border_width(orbBox, borderWidth)
+    box.set_bgcolor(orbBox, fillColor)
+
+//──────────────────────────────────────────────────────────────────────────────
+// Confirmed 5-minute candles
+//
+// closedFiveMinuteTime corresponds to time[1] from the 5-minute context.
+// When it changes, a new 5-minute candle has been fully confirmed.
+//──────────────────────────────────────────────────────────────────────────────
+
+[closedFiveMinuteTime, closedFiveMinuteClose, precedingFiveMinuteClose] = request.security(
+     symbol = syminfo.tickerid,
+     timeframe = "5",
+     expression = [time[1], close[1], close[2]],
+     gaps = barmerge.gaps_off,
+     lookahead = barmerge.lookahead_on)
+
+bool newConfirmedFiveMinuteCandle = ta.change(closedFiveMinuteTime) != 0
+
+bool rangeIsAvailable = (
+     not na(rangeHigh) and
+     not na(rangeLow) and
+     not na(rangeOpeningTime))
+
+// Upper breakout:
+// the previous 5-minute close was inside or at the range and the new close
+// finishes above the upper border.
+bool upperBreakout = (
+     fiveMinuteSignalsAvailable and
+     newConfirmedFiveMinuteCandle and
+     rangeIsAvailable and
+     closedFiveMinuteClose > rangeHigh and
+     precedingFiveMinuteClose <= rangeHigh)
+
+// Lower breakout:
+// the previous 5-minute close was inside or at the range and the new close
+// finishes below the lower border.
+bool lowerBreakout = (
+     fiveMinuteSignalsAvailable and
+     newConfirmedFiveMinuteCandle and
+     rangeIsAvailable and
+     closedFiveMinuteClose < rangeLow and
+     precedingFiveMinuteClose >= rangeLow)
+
+//──────────────────────────────────────────────────────────────────────────────
+// Test markers — current day only
+//
+// Unlike plot outputs, labels can be deleted when a new chart day begins.
+// Keeping their IDs in signalLabels ensures that prior-day markers disappear
+// during an uninterrupted realtime session as well as after a script reload.
+//──────────────────────────────────────────────────────────────────────────────
+
+bool showUpperMarker = (
+     showSignalMarkers and
+     upperBreakout)
+
+bool showLowerMarker = (
+     showSignalMarkers and
+     lowerBreakout)
+
+if showUpperMarker
+    label upperMarker = label.new(
+         x = closedFiveMinuteTime,
+         y = closedFiveMinuteClose,
+         text = "ORB↑",
+         xloc = xloc.bar_time,
+         yloc = yloc.abovebar,
+         color = color.lime,
+         style = label.style_triangleup,
+         textcolor = color.lime,
+         size = size.small)
+    array.push(signalLabels, upperMarker)
+
+if showLowerMarker
+    label lowerMarker = label.new(
+         x = closedFiveMinuteTime,
+         y = closedFiveMinuteClose,
+         text = "ORB↓",
+         xloc = xloc.bar_time,
+         yloc = yloc.belowbar,
+         color = color.red,
+         style = label.style_triangledown,
+         textcolor = color.red,
+         size = size.small)
+    array.push(signalLabels, lowerMarker)
+
+//──────────────────────────────────────────────────────────────────────────────
+// Alert conditions
+//
+// The current-day filter applies only to visual markers.
+// Alerts remain active for all future sessions.
+//──────────────────────────────────────────────────────────────────────────────
+
+alertcondition(
+     condition = enableUpperAlert and upperBreakout,
+     title = "ORB — Upper 5M breakout",
+     message = "{{ticker}}: a confirmed 5-minute candle crossed and closed above the ORB range.")
+
+alertcondition(
+     condition = enableLowerAlert and lowerBreakout,
+     title = "ORB — Lower 5M breakout",
+     message = "{{ticker}}: a confirmed 5-minute candle crossed and closed below the ORB range.")
