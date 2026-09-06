@@ -1,5 +1,12 @@
 # Production audit — 2026-09-06
 
+Follow-up: the owner approved immediate rendering of the confirmed ORB during
+an open higher-timeframe chart bar. The host-close policy described below is
+historical and superseded by [the timing update](validation/2026-09-06-immediate-orb.md)
+and current SPEC. Earlier check counts and source hashes apply only to that audit.
+The follow-up also records owner-reported compilation and 60m/ORB15 reload
+acceptance for the authorized v1.1.0 Git delivery; broader audit coverage remains open.
+
 Status: BLOCKED on exact-candidate native and operational validation. Local
 remediation and independent source review are complete. Publication is NOT
 PERFORMED. Scope: the existing ORB indicator, its tests, contracts, validation

@@ -3,10 +3,12 @@
 All notable user-visible changes to the ORB Opening Range Box are documented in
 this file.
 
-## Unreleased — production audit (2026-09-06)
+## Release v1.1.0 — 2026-09-06
 
-These changes prepare the 1.1.0 candidate. They are not a TradingView publication
-or a tagged release. Exact-candidate native verification remains blocked.
+Owner-authorized Git release. The owner reports successful TradingView
+compilation and correct ORB15 levels on a 60m chart, preserved after reload.
+This is not an agent-observed native pass or a TradingView publication;
+remaining operational coverage is documented in validation.
 
 ### Fixed
 
@@ -21,8 +23,9 @@ or a tagged release. Exact-candidate native verification remains blocked.
 
 ### Changed
 
-- Above the selected ORB timeframe, a new rectangle is accepted at chart-bar
-  close. For ORB15 on a 60m RTH chart this means 10:30, not 09:45.
+- Draw as soon as the confirmed opening range is received, including while a
+  higher-timeframe chart candle remains open. This supersedes the audit's initial
+  chart-close wait: realtime ORB15 can appear after 09:45, ORB30 after 10:00.
 - Range prices/colors are set at box creation; only the dynamic right edge needs
   subsequent updates. No measured speedup is claimed.
 

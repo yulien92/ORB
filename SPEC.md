@@ -61,19 +61,21 @@ timestamp interval or diagnose feed entitlements/transport latency.
 
 | Request | Context and expression | Mapping / timing |
 | --- | --- | --- |
-| ORB snapshot | Chart ticker; selected 15/30m; `[time, confirmedHigh, confirmedLow, openingTime]` from `f_openingRange()` | `gaps_off`. ChartTF <= ORBTF: `lookahead_on`, confirmed prior prices. ChartTF > ORBTF: `lookahead_off`, last LTF snapshot, accepted for a new drawing only on a confirmed chart bar. |
+| ORB snapshot | Chart ticker; selected 15/30m; `[time, confirmedHigh, confirmedLow, openingTime]` from `f_openingRange()` | `gaps_off`. ChartTF <= ORBTF: `lookahead_on`, confirmed prior prices. ChartTF > ORBTF: `lookahead_off`, last available LTF snapshot. A valid range can draw while the chart bar is open. |
 | 5m signal data | Chart ticker; 5m; `[time[1], time_close[1], time_close[2], close[1], close[2]]` | `gaps_off`, `lookahead_on`. Signal engine enabled only at ChartTF <= 5m. Above 5m its sampled values are never actionable. |
 
-The LTF request needs a persistent end-of-bar range snapshot, not every intrabar
+The LTF request needs a persistent confirmed range snapshot, not every intrabar
 event. Therefore two scalar tuple requests are sufficient; no intrabar arrays or
-alternative calculation engine are introduced. `barstate.isconfirmed` is used
-only in chart scope, never as confirmation inside `request.security()`.
+alternative calculation engine are introduced. Source confirmation comes from
+the prior-candle offsets, not `barstate.isconfirmed`.
 
-For ChartTF > ORBTF the first rectangle waits for the chart bar's closing update.
-Example: regular-session 60m chart and ORB15 observes it at 10:30; a 720m RTH
-chart observes it at the shortened session-ending chart close. This deliberately
-avoids using a changing LTF snapshot during an open host bar. At ChartTF <= ORBTF
-it can appear on the first chart update receiving the confirmed source range.
+On every supported chart, draw on the first update receiving the confirmed range.
+For a realtime 60m chart, ORB15 can therefore appear on the first update after
+09:45 and ORB30 after 10:00, without waiting for 10:30. Prices remain those of
+the completed opening candle. Pine rollback can recreate the uncommitted box
+on each update from that snapshot; do not add `varip` or a one-shot tick latch.
+Historical bars execute with their last mapped LTF snapshot, not every past tick;
+reloading reconstructs the range but cannot prove its original intrabar appearance.
 Nondivisor chart intervals may have different host detection bars/latency;
 the mandatory native test compares source event timestamps and confirmed prices.
 
@@ -123,7 +125,7 @@ results after reload. No absolute non-repainting or performance guarantee is mad
 
 An orange status cell is always visible for visual-only mode (ChartTF > 5m)
 and for an unavailable range. It says active only if a box actually exists,
-and distinguishes a confirmed range waiting for host close. It is cleared when
+and otherwise reports that a complete opening range is unavailable. It is cleared when
 the full engine has a valid range; that does not assert live server delivery or
 complete feed quality. There are no extra user settings for these safeguards.
 
@@ -143,7 +145,7 @@ in `validation/2026-09-06-production-audit.md`.
 | Requirement | Implementation | Evidence / acceptance |
 | --- | --- | --- |
 | R1 Complete confirmed 09:30 range, 15/30m | `f_openingRange`, `previousBarIsOpening` | S01/M01 and N02: exact candle high/low, no partial/pre-close value |
-| R2 Rectangle on all supported intraday TF | `chartAboveOpeningRange`, request mapping, `rangeObservationReady` | S01/M02 and N03: last snapshot retained at host close on 60/720m |
+| R2 Rectangle on all supported intraday TF | `chartAboveOpeningRange`, request mapping, `newConfirmedRange` | S01/M02 and N03: first available confirmed snapshot; native 60/720m intrabar persistence/reload remains required |
 | R3 No >5m actionable signals | `fiveMinuteSignalsAvailable`, both breakouts | S01/M03 mutation controls and N03: neither direction triggers |
 | R4 No stale prior-date or cross-gap values | `f_calendarDay`, `rangeIsAvailable`, `signalTimesAreValid` | S01/M01 and N04/O01: reset/wait, no old event |
 | R5 Exact crossing inequalities | `upperBreakout`, `lowerBreakout` | M03: source-bound fixtures and comparator mutation rejection; N05 for real candles |

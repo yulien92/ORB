@@ -5,10 +5,12 @@ ORB Opening Range Box indicator by Yulien. It draws a confirmed 15-minute or
 30-minute opening range beginning at 09:30 in the symbol's exchange timezone
 and exposes confirmed five-minute close-crossing alerts.
 
-Current indicator version: `1.1.0` (unpublished audit candidate).
+Current indicator version: `1.1.0` (Git release tag `v1.1.0`; TradingView publication is manual).
 
-Technical readiness: **BLOCKED** on exact-source TradingView compilation and
-the native/operational matrix in [validation](validation/2026-09-06-production-audit.md).
+Owner-reported validation: successful TradingView compilation and correct ORB15
+high/low on a 60m chart, preserved after reload. Broader native/operational
+coverage remains incomplete in [validation](validation/2026-09-06-production-audit.md).
+Latest timing change and local results: [immediate ORB update](validation/2026-09-06-immediate-orb.md).
 The repository source is not automatically synchronized with TradingView.
 
 ## Installation and upgrade
@@ -22,7 +24,7 @@ The repository source is not automatically synchronized with TradingView.
 4. When adopting a verified update, recreate the owner's configured alerts from
    the updated source and inputs. Existing server alerts store the older snapshot.
 
-Do not publish the current candidate until its release blockers are closed.
+Git delivery does not certify the unexecuted operational tests or publish the indicator.
 
 This indicator provides market context. It is not an automatic trade-entry or
 trade-exit system.
@@ -46,13 +48,13 @@ mode. Use a chart timeframe of five minutes or lower for the complete signal
 engine. This avoids both an unnecessary full-script failure and
 silently incomplete breakout monitoring.
 
-When the chart timeframe exceeds the selected ORB timeframe, the **new rectangle
-waits for the chart candle to close** so the last confirmed source snapshot can
-be used consistently. For example, ORB15 on regular-session 60m first appears at
-10:30; on a one-candle-per-session chart it waits until that chart candle closes.
-The panel explicitly reports a waiting range rather than claiming a box is active.
-The 15m chart with ORB15 remains visual-only for signals, but does not use this
-extra higher-chart close gate.
+The rectangle uses the confirmed opening candle even when the chart timeframe
+is larger. On a realtime 60m chart, ORB15 can draw on the first update after
+09:45 and ORB30 after 10:00; it does not wait for the hourly candle to close.
+High and low stay fixed; only the right edge extends. Historical bars use their
+last mapped source snapshot, so historical/replay stepping is not proof of the
+original tick-by-tick appearance. The owner confirmed 60m/ORB15 levels after
+reload; exact realtime intrabar appearance and other combinations remain unverified.
 
 The script still stops with a clear runtime error on daily or higher
 timeframes, tick charts, and non-standard chart types such as Heikin-Ashi,
@@ -136,14 +138,14 @@ These gates are independent and must be reported separately:
 | Gate | Current status |
 | --- | --- |
 | Local static and deterministic contracts | Final results recorded in the current validation document |
-| Pine v6 compilation in TradingView | BLOCKED for the exact candidate: internal-browser automation unavailable |
+| Pine v6 compilation in TradingView | PASS reported by owner after manual update; editor bytes not independently verified |
 | Standard 5-minute supported-mode activation | BLOCKED for the current source |
-| Standard 15/60/720-minute visual-only activation | BLOCKED for the current source; rectangle isolation required |
+| Standard 15/60/720-minute visual-only activation | 60m/ORB15 correct levels and reload PASS reported by owner; other cases unverified |
 | Bar Replay marker behavior | BLOCKED for the current source |
 | Uninterrupted live day-rollover cleanup | BLOCKED: not observed |
 | Live server alert delivery | BLOCKED: not observed; existing alerts untouched |
 | Profiler and light/dark UI | BLOCKED: no native access or measurements |
-| TradingView cloud save/publication | Not performed |
+| TradingView cloud save/publication | Manual editor update reported by owner; publication not performed by agent |
 
 Passing local contracts is not evidence that any TradingView runtime,
 publication, or live-alert gate passed.
@@ -157,8 +159,8 @@ Suggested ASCII publication title: **ORB Opening Range Box by Yulien**.
 
 Draft description: This indicator draws the high and low of the complete
 09:30 exchange-local 15- or 30-minute candle. Standard time-based intraday
-charts above five minutes offer a visual-only rectangle, with chart-close
-observation when the chart is larger than the opening-range timeframe. Charts
+charts above five minutes offer a visual-only rectangle as soon as the confirmed
+opening range is received, without an added wait for chart-bar close. Charts
 up to five minutes can expose confirmed close-crossing alert conditions and
 optional retrospective markers. Missing opening data suppresses the range;
 source gaps suppress unsafe crossings. Alert detection needs a subsequent data

@@ -1,5 +1,10 @@
 # Production audit validation — 2026-09-06
 
+Historical candidate record. The subsequent [immediate ORB update](2026-09-06-immediate-orb.md)
+supersedes this source hash and N03's host-close timing expectation. Other
+unexecuted native/operational procedures remain applicable; no passes transfer
+automatically to the new source.
+
 Technical verdict: **BLOCKED**. Local checks pass; exact-source Pine-native and
 operational release checks have not run. Publication: **NOT PERFORMED**.
 

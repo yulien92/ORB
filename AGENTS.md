@@ -19,8 +19,9 @@
 - Preserve confirmed price offsets, explicit context-dependent ORB lookahead,
   calendar date and source interval validation, independent display/alert controls,
   and >5m visual-only behavior. Do not silently restore first-intrabar sampling.
-- A new range on ChartTF > ORBTF is observed only at host-bar close. Test 60/720m
-  separately from 15m; test 2/3/4m source-boundary timing rather than assuming it.
+- Draw a confirmed range on the first available update, without waiting for
+  host-bar close. Test realtime 60/720m rollback/reload separately from historical
+  mapping; test 2/3/4m source-boundary timing rather than assuming it.
 - Use the owner's Codex internal browser exclusively for TradingView tests.
   Compile exact candidate bytes in an unpublished copy, preserve unrelated editor
   buffers/layouts, and record the source hash, dataset, settings and observations.

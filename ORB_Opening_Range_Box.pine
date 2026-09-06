@@ -164,10 +164,6 @@ bool rangeIsAvailable = (
      f_calendarDay(requestedTime) == chartDay and
      rangeOpeningTime + openingRangeDurationMs <= time_close)
 
-// Higher charts accept their last LTF snapshot at host-bar close. This makes the
-// observation point reproducible; confirmed range PRICES never use an open bar.
-bool rangeObservationReady = not chartAboveOpeningRange or barstate.isconfirmed
-
 //──────────────────────────────────────────────────────────────────────────────
 // Rectangle creation and updates
 //──────────────────────────────────────────────────────────────────────────────
@@ -186,7 +182,9 @@ if chartNewDay
         label.delete(signalLabel)
     array.clear(signalLabels)
 
-bool newConfirmedRange = rangeIsAvailable and rangeObservationReady and na(orbBox)
+// The source range is already confirmed; an open chart bar need not delay it.
+// Realtime rollback can recreate this drawing from the same confirmed snapshot.
+bool newConfirmedRange = rangeIsAvailable and na(orbBox)
 
 // The right border is projected using the chart bar duration.
 int chartBarDurationMs = time_close - time
@@ -215,8 +213,6 @@ if barstate.islast
         table.clear(signalStatusTable, 0, 0, 0, 0)
     else
         string rangeStatus = not na(orbBox) ? "ORB rectangle active" : "ORB unavailable: waiting for a complete 09:30 range"
-        if rangeIsAvailable and not rangeObservationReady and na(orbBox)
-            rangeStatus := "ORB confirmed; rectangle waits for chart-bar close"
         string modeStatus = fiveMinuteSignalsAvailable ? "5M signals wait for valid range and candle data." : "Visual-only mode: 5M alerts and markers are unavailable on " + timeframe.period + "."
         table.cell(
              table_id = signalStatusTable,
