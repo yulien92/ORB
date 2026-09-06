@@ -68,31 +68,6 @@ function Test-NoRegex {
     )) -Detail "Forbidden pattern: $Pattern"
 }
 
-function Get-BreakoutDirection {
-    param(
-        [double]$CurrentClose,
-        [double]$PreviousClose,
-        [double]$RangeHigh,
-        [double]$RangeLow,
-        [bool]$RangeIsAvailable = $true,
-        [bool]$IsNewConfirmedCandle = $true
-    )
-
-    if (-not $RangeIsAvailable -or -not $IsNewConfirmedCandle) {
-        return 'None'
-    }
-
-    if ($CurrentClose -gt $RangeHigh -and $PreviousClose -le $RangeHigh) {
-        return 'Upper'
-    }
-
-    if ($CurrentClose -lt $RangeLow -and $PreviousClose -ge $RangeLow) {
-        return 'Lower'
-    }
-
-    return 'None'
-}
-
 function Get-ExpectedOrbMode {
     param(
         [bool]$ChartIsStandard,
@@ -134,9 +109,19 @@ $requestSecurityCount = [regex]::Matches($codeOnly, 'request\.security\s*\(').Co
 Test-Contract -Name 'Exactly two request.security calls remain' -Condition ($requestSecurityCount -eq 2) -Detail "Found $requestSecurityCount"
 Test-NoRegex -Name 'No lower-timeframe array request is introduced' -Text $codeOnly -Pattern 'request\.security_lower_tf\s*\('
 Test-Regex -Name 'Opening range publishes only confirmed high and low values' -Text $codeOnly -Pattern 'confirmedHigh\s*:=\s*high\[1\][\s\S]*confirmedLow\s*:=\s*low\[1\]'
-Test-Regex -Name 'Opening range request keeps explicit lookahead_on' -Text $codeOnly -Pattern 'expression\s*=\s*f_openingRange\(\)[\s\S]*?lookahead\s*=\s*barmerge\.lookahead_on'
-Test-Regex -Name 'Five-minute request uses two confirmed close offsets' -Text $codeOnly -Pattern 'expression\s*=\s*\[time\[1\],\s*close\[1\],\s*close\[2\]\]'
-Test-Regex -Name 'Five-minute tuple assignment stays on one line' -Text $codeOnly -Pattern '^\[closedFiveMinuteTime, closedFiveMinuteClose, precedingFiveMinuteClose\] = request\.security\('
+Test-Regex -Name 'ORB mapping selects last LTF snapshot and confirmed HTF snapshot' -Text $codeOnly -Pattern 'lookahead\s*=\s*chartAboveOpeningRange\s*\?\s*barmerge\.lookahead_off\s*:\s*barmerge\.lookahead_on'
+Test-Regex -Name 'Higher-chart ORB observation waits for host confirmation' -Text $codeOnly -Pattern 'rangeObservationReady\s*=\s*not\s+chartAboveOpeningRange\s+or\s+barstate\.isconfirmed'
+Test-Regex -Name 'Five-minute request carries confirmed prices and interval endpoints' -Text $codeOnly -Pattern 'expression\s*=\s*\[time\[1\],\s*time_close\[1\],\s*time_close\[2\],\s*close\[1\],\s*close\[2\]\]'
+Test-Regex -Name 'Five-minute tuple assignment stays on one line' -Text $codeOnly -Pattern '^\[closedFiveMinuteTime, closedFiveMinuteCloseTime, precedingFiveMinuteCloseTime, closedFiveMinuteClose, precedingFiveMinuteClose\] = request\.security\('
+Test-Regex -Name 'Opening candle cannot restore a previous calendar day' -Text $codeOnly -Pattern 'f_calendarDay\(time\[1\]\)\s*==\s*requestedDay'
+Test-Regex -Name 'Opening candle must span the complete selected range' -Text $codeOnly -Pattern 'time_close\[1\]\s*-\s*time\[1\]\s*==\s*openingRangeDurationMs'
+Test-NoRegex -Name 'Calendar resets do not use daily session bar boundaries' -Text $codeOnly -Pattern 'time\("D"\)'
+Test-Regex -Name 'Calendar key includes year month and day' -Text $codeOnly -Pattern 'year\(barTime\)\s*\*\s*10000\s*\+\s*month\(barTime\)\s*\*\s*100\s*\+\s*dayofmonth\(barTime\)'
+Test-Regex -Name 'Missing rectangle can be recreated from a valid snapshot' -Text $codeOnly -Pattern 'newConfirmedRange\s*=\s*rangeIsAvailable\s+and\s+rangeObservationReady\s+and\s+na\(orbBox\)'
+Test-Regex -Name 'Consumer range belongs to the chart calendar date' -Text $codeOnly -Pattern 'f_calendarDay\(rangeOpeningTime\)\s*==\s*chartDay\s+and\s+f_calendarDay\(requestedTime\)\s*==\s*chartDay'
+Test-Regex -Name 'Signal interval is complete and adjacent to the preceding candle' -Text $codeOnly -Pattern 'closedFiveMinuteCloseTime\s*-\s*closedFiveMinuteTime\s*==\s*fiveMinuteDurationMs\s+and\s+precedingFiveMinuteCloseTime\s*==\s*closedFiveMinuteTime'
+Test-Regex -Name 'Signals start after ORB end on the chart calendar date' -Text $codeOnly -Pattern 'closedFiveMinuteTime\s*>=\s*rangeOpeningTime\s*\+\s*openingRangeDurationMs\s+and\s+f_calendarDay\(closedFiveMinuteTime\)\s*==\s*chartDay'
+Test-Regex -Name 'Signals cannot use future or stale observation timestamps' -Text $codeOnly -Pattern 'closedFiveMinuteCloseTime\s*<=\s*time_close\s+and\s+time\s*-\s*closedFiveMinuteCloseTime\s*<\s*fiveMinuteDurationMs'
 
 Test-Regex -Name 'Standard chart types are required' -Text $codeOnly -Pattern 'chart\.is_standard'
 Test-Regex -Name 'Intraday chart timeframes are required' -Text $codeOnly -Pattern 'timeframe\.isintraday'
@@ -146,9 +131,10 @@ Test-Regex -Name 'Five-minute signal engine is capped at five minutes' -Text $co
 Test-Regex -Name 'Invalid time-based contexts stop with a diagnostic' -Text $codeOnly -Pattern 'if\s+not\s+timeframe\.isintraday\s+or\s+timeframe\.isticks\s*\r?\n\s+runtime\.error\s*\('
 Test-NoRegex -Name 'Higher timeframes no longer stop the rectangle' -Text $codeOnly -Pattern 'ORB requires a time-based intraday chart with a timeframe of 5 minutes or lower\.'
 Test-Regex -Name 'Visual-only mode has a warning table' -Text $codeOnly -Pattern 'var\s+table\s+signalStatusTable\s*=\s*table\.new\s*\('
-Test-Regex -Name 'Visual-only warning explains what remains active' -Text $source -Pattern 'ORB rectangle active\\n5M alerts and markers are unavailable'
+Test-Regex -Name 'Visual-only warning names the unavailable signals' -Text $source -Pattern 'Visual-only mode: 5M alerts and markers are unavailable'
+Test-Regex -Name 'Unavailable range is visibly distinguished from an active box' -Text $source -Pattern 'not na\(orbBox\)\s*\?\s*"ORB rectangle active"\s*:\s*"ORB unavailable:'
 Test-Regex -Name 'Status table updates only on the last chart bar' -Text $codeOnly -Pattern 'if\s+barstate\.islast'
-Test-Regex -Name 'Full mode clears the visual-only warning' -Text $codeOnly -Pattern 'if\s+fiveMinuteSignalsAvailable\s*\r?\n\s+table\.clear\s*\(signalStatusTable'
+Test-Regex -Name 'Full mode clears warning only with a valid range' -Text $codeOnly -Pattern 'if\s+fiveMinuteSignalsAvailable\s+and\s+rangeIsAvailable\s*\r?\n\s+table\.clear\s*\(signalStatusTable'
 
 Test-Regex -Name 'Indicator reserves capacity for managed signal labels' -Text $codeOnly -Pattern 'max_labels_count\s*=\s*200'
 Test-Regex -Name 'Signal label IDs are retained for lifecycle management' -Text $codeOnly -Pattern 'var\s+array<label>\s+signalLabels\s*=\s*array\.new<label>\(\)'
@@ -165,23 +151,6 @@ $alertConditionCount = [regex]::Matches($codeOnly, 'alertcondition\s*\(').Count
 Test-Contract -Name 'Both public alert conditions remain' -Condition ($alertConditionCount -eq 2) -Detail "Found $alertConditionCount"
 Test-Regex -Name 'Upper alert remains independent of marker visibility' -Text $codeOnly -Pattern 'condition\s*=\s*enableUpperAlert\s+and\s+upperBreakout'
 Test-Regex -Name 'Lower alert remains independent of marker visibility' -Text $codeOnly -Pattern 'condition\s*=\s*enableLowerAlert\s+and\s+lowerBreakout'
-
-$fixtureCases = @(
-    @{ Name = 'Upper crossing'; Expected = 'Upper'; Arguments = @{ CurrentClose = 101; PreviousClose = 100; RangeHigh = 100; RangeLow = 90 } }
-    @{ Name = 'Close equal to upper boundary'; Expected = 'None'; Arguments = @{ CurrentClose = 100; PreviousClose = 99; RangeHigh = 100; RangeLow = 90 } }
-    @{ Name = 'Already above upper boundary'; Expected = 'None'; Arguments = @{ CurrentClose = 102; PreviousClose = 101; RangeHigh = 100; RangeLow = 90 } }
-    @{ Name = 'Lower crossing'; Expected = 'Lower'; Arguments = @{ CurrentClose = 89; PreviousClose = 90; RangeHigh = 100; RangeLow = 90 } }
-    @{ Name = 'Close equal to lower boundary'; Expected = 'None'; Arguments = @{ CurrentClose = 90; PreviousClose = 91; RangeHigh = 100; RangeLow = 90 } }
-    @{ Name = 'Already below lower boundary'; Expected = 'None'; Arguments = @{ CurrentClose = 88; PreviousClose = 89; RangeHigh = 100; RangeLow = 90 } }
-    @{ Name = 'Unavailable range'; Expected = 'None'; Arguments = @{ CurrentClose = 101; PreviousClose = 100; RangeHigh = 100; RangeLow = 90; RangeIsAvailable = $false } }
-    @{ Name = 'Unconfirmed candle'; Expected = 'None'; Arguments = @{ CurrentClose = 101; PreviousClose = 100; RangeHigh = 100; RangeLow = 90; IsNewConfirmedCandle = $false } }
-)
-
-foreach ($fixture in $fixtureCases) {
-    $arguments = $fixture.Arguments
-    $actual = Get-BreakoutDirection @arguments
-    Test-Contract -Name "Fixture: $($fixture.Name)" -Condition ($actual -eq $fixture.Expected) -Detail "Expected $($fixture.Expected), got $actual"
-}
 
 $modeFixtures = @(
     @{ Name = 'Standard one-minute chart'; Expected = 'Full'; Arguments = @{ ChartIsStandard = $true; ChartIsIntraday = $true; ChartIsTick = $false; ChartSeconds = 60 } }

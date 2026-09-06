@@ -1,5 +1,10 @@
 # TradingView visual-only validation — 2026-09-04
 
+Historical evidence only. Superseded for current readiness by
+`2026-09-06-production-audit.md`. The 2026-09-06 audit corrected the former
+equivalence claim: stripping all whitespace also removes Pine's meaningful
+indentation, so matching normalized hashes is not proof of executable equivalence.
+
 ## Revision under test
 
 - Canonical source: `ORB_Opening_Range_Box.pine`
@@ -7,7 +12,7 @@
   `C99717A9C19F07E5FB03691CF48BAEF53FABAEB51CB61E14583D882350EAD04C`
 - TradingView test-buffer SHA-256:
   `99202751E8DE508F879BB43E7D0E4488E074C7120BEEE5FB1A49E456190C18EC`
-- Executable-normalized SHA-256 for both sources:
+- Whitespace/comment-stripped transfer-check SHA-256 for both sources:
   `70686CA6CF3E0D6AD49A1D70A41CB76AE8F5EEA20926EC3DC2C137B4FEAC7C35`
 - Pine language: v6
 - Symbol used: AMEX:SPY
@@ -17,13 +22,14 @@
 The TradingView test buffer differed from the canonical file only in comments
 and whitespace introduced while transferring the source. Removing line
 comments and whitespace from each source produced the same normalized length
-of 5,271 characters and the same executable-normalized SHA-256 above.
+of 5,271 characters and the same transfer-check SHA-256 above. The distinct raw
+hashes do not establish exact canonical-source compilation.
 
 ## Observed evidence
 
 | Gate | Result | Observation |
 | --- | --- | --- |
-| Pine compilation and update | Passed | TradingView compiled the executable-equivalent source and updated the temporary `ORB Box` instance without a compiler error. |
+| Pine compilation and update | Passed for the historical test buffer only | TradingView compiled that test buffer and updated the temporary `ORB Box` instance without a compiler error. Exact canonical-source equivalence was not established. |
 | Standard 15-minute visual-only activation | Passed | The updated indicator stayed active without the former runtime error and displayed the orange `ORB rectangle active` warning that five-minute alerts and markers were unavailable. |
 | Standard 5-minute supported-mode activation | Passed | Returning the chart to five minutes removed the visual-only warning and kept the indicator active without a runtime error. |
 | Chart restoration | Passed | The chart was restored to five minutes after validation. |

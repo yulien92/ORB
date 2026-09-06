@@ -1,5 +1,9 @@
 # TradingView validation — 2026-09-03
 
+Historical guard-version evidence only. Its >5m rejection was subsequently
+superseded by visual-only behavior. This record is not a current-candidate pass;
+see `2026-09-06-production-audit.md` for current readiness.
+
 ## Revision under test
 
 - Source: `ORB_Opening_Range_Box.pine`

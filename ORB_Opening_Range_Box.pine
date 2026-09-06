@@ -94,6 +94,10 @@ bool showSignalMarkers = input.bool(
 // Operating mode status
 //──────────────────────────────────────────────────────────────────────────────
 
+bool chartAboveOpeningRange = timeframe.in_seconds() > timeframe.in_seconds(orbTimeframe)
+int openingRangeDurationMs = int(timeframe.in_seconds(orbTimeframe) * 1000)
+int fiveMinuteDurationMs = 5 * 60 * 1000
+
 var table signalStatusTable = table.new(
      position = position.top_right,
      columns = 1,
@@ -101,47 +105,39 @@ var table signalStatusTable = table.new(
      frame_color = color.orange,
      frame_width = 1)
 
-if barstate.islast
-    if fiveMinuteSignalsAvailable
-        table.clear(signalStatusTable, 0, 0, 0, 0)
-    else
-        table.cell(
-             table_id = signalStatusTable,
-             column = 0,
-             row = 0,
-             text = "ORB rectangle active\n5M alerts and markers are unavailable on " + timeframe.period + ".\nUse a chart timeframe of 5 minutes or lower.",
-             text_color = color.black,
-             text_size = size.small,
-             bgcolor = color.new(color.orange, 10))
-
 //──────────────────────────────────────────────────────────────────────────────
 // Opening range calculation
 //
 // This function runs inside the selected ORB timeframe.
 //
 // When a new ORB-timeframe candle begins, the previous candle is confirmed.
-// If that previous candle began at 09:30, its high and low are permanently fixed.
+// Accept only a complete opening candle from the same exchange calendar date.
 //
 // hour() and minute() use the symbol exchange timezone by default.
 //──────────────────────────────────────────────────────────────────────────────
+
+f_calendarDay(int barTime) =>
+    year(barTime) * 10000 + month(barTime) * 100 + dayofmonth(barTime)
 
 f_openingRange() =>
     var float confirmedHigh = na
     var float confirmedLow = na
     var int openingTime = na
 
-    bool requestedNewDay = ta.change(time("D")) != 0
+    int requestedDay = f_calendarDay(time)
+    bool requestedNewDay = na(requestedDay[1]) or requestedDay != requestedDay[1]
 
     if requestedNewDay
         confirmedHigh := na
         confirmedLow := na
         openingTime := na
 
-    bool requestedBarAdvanced = ta.change(time) != 0
-    bool previousBarIsOpening = false
-
-    if requestedBarAdvanced and not na(time[1])
-        previousBarIsOpening := hour(time[1]) == 9 and minute(time[1]) == 30
+    bool previousBarIsOpening = (
+         not na(time[1]) and
+         f_calendarDay(time[1]) == requestedDay and
+         hour(time[1]) == 9 and minute(time[1]) == 30 and
+         time_close[1] - time[1] == openingRangeDurationMs and
+         not na(high[1]) and not na(low[1]) and high[1] >= low[1])
 
     if previousBarIsOpening
         confirmedHigh := high[1]
@@ -150,14 +146,27 @@ f_openingRange() =>
 
     [time, confirmedHigh, confirmedLow, openingTime]
 
-// lookahead_on does not introduce future prices because the published levels
-// come exclusively from high[1] and low[1], which belong to a fully closed bar.
+// HTF/same-TF: offset prices with lookahead_on. LTF: select the LAST snapshot,
+// since the first intrabar can contain only the day's reset. The function carries
+// the confirmed range forward; no complete intrabar event stream is needed here.
 [requestedTime, rangeHigh, rangeLow, rangeOpeningTime] = request.security(
      symbol = syminfo.tickerid,
      timeframe = orbTimeframe,
      expression = f_openingRange(),
      gaps = barmerge.gaps_off,
-     lookahead = barmerge.lookahead_on)
+     lookahead = chartAboveOpeningRange ? barmerge.lookahead_off : barmerge.lookahead_on)
+
+int chartDay = f_calendarDay(time)
+bool rangeIsAvailable = (
+     not na(rangeHigh) and not na(rangeLow) and rangeHigh >= rangeLow and
+     not na(rangeOpeningTime) and
+     f_calendarDay(rangeOpeningTime) == chartDay and
+     f_calendarDay(requestedTime) == chartDay and
+     rangeOpeningTime + openingRangeDurationMs <= time_close)
+
+// Higher charts accept their last LTF snapshot at host-bar close. This makes the
+// observation point reproducible; confirmed range PRICES never use an open bar.
+bool rangeObservationReady = not chartAboveOpeningRange or barstate.isconfirmed
 
 //──────────────────────────────────────────────────────────────────────────────
 // Rectangle creation and updates
@@ -166,7 +175,7 @@ f_openingRange() =>
 var box orbBox = na
 var array<label> signalLabels = array.new<label>()
 
-bool chartNewDay = ta.change(time("D")) != 0
+bool chartNewDay = na(chartDay[1]) or chartDay != chartDay[1]
 
 if chartNewDay
     if not na(orbBox)
@@ -177,21 +186,13 @@ if chartNewDay
         label.delete(signalLabel)
     array.clear(signalLabels)
 
-bool requestedTimeAdvanced = ta.change(requestedTime) != 0
-bool newConfirmedRange = false
-
-if requestedTimeAdvanced and not na(rangeOpeningTime)
-    if na(rangeOpeningTime[1]) or rangeOpeningTime != rangeOpeningTime[1]
-        newConfirmedRange := true
+bool newConfirmedRange = rangeIsAvailable and rangeObservationReady and na(orbBox)
 
 // The right border is projected using the chart bar duration.
 int chartBarDurationMs = time_close - time
 int dynamicRightTime = time_close + rightSpaceBars * chartBarDurationMs
 
 if newConfirmedRange
-    if not na(orbBox)
-        box.delete(orbBox)
-
     orbBox := box.new(
          left = rangeOpeningTime,
          top = rangeHigh,
@@ -204,11 +205,27 @@ if newConfirmedRange
 
 if not na(orbBox)
     box.set_right(orbBox, dynamicRightTime)
-    box.set_top(orbBox, rangeHigh)
-    box.set_bottom(orbBox, rangeLow)
-    box.set_border_color(orbBox, borderColor)
-    box.set_border_width(orbBox, borderWidth)
-    box.set_bgcolor(orbBox, fillColor)
+
+if not rangeIsAvailable and not na(orbBox)
+    box.delete(orbBox)
+    orbBox := na
+
+if barstate.islast
+    if fiveMinuteSignalsAvailable and rangeIsAvailable
+        table.clear(signalStatusTable, 0, 0, 0, 0)
+    else
+        string rangeStatus = not na(orbBox) ? "ORB rectangle active" : "ORB unavailable: waiting for a complete 09:30 range"
+        if rangeIsAvailable and not rangeObservationReady and na(orbBox)
+            rangeStatus := "ORB confirmed; rectangle waits for chart-bar close"
+        string modeStatus = fiveMinuteSignalsAvailable ? "5M signals wait for valid range and candle data." : "Visual-only mode: 5M alerts and markers are unavailable on " + timeframe.period + "."
+        table.cell(
+             table_id = signalStatusTable,
+             column = 0,
+             row = 0,
+             text = rangeStatus + "\n" + modeStatus,
+             text_color = color.black,
+             text_size = size.small,
+             bgcolor = color.new(color.orange, 10))
 
 //──────────────────────────────────────────────────────────────────────────────
 // Confirmed 5-minute candles
@@ -217,37 +234,46 @@ if not na(orbBox)
 // When it changes, a new 5-minute candle has been fully confirmed.
 //──────────────────────────────────────────────────────────────────────────────
 
-[closedFiveMinuteTime, closedFiveMinuteClose, precedingFiveMinuteClose] = request.security(
+[closedFiveMinuteTime, closedFiveMinuteCloseTime, precedingFiveMinuteCloseTime, closedFiveMinuteClose, precedingFiveMinuteClose] = request.security(
      symbol = syminfo.tickerid,
      timeframe = "5",
-     expression = [time[1], close[1], close[2]],
+     expression = [time[1], time_close[1], time_close[2], close[1], close[2]],
      gaps = barmerge.gaps_off,
      lookahead = barmerge.lookahead_on)
 
 bool newConfirmedFiveMinuteCandle = ta.change(closedFiveMinuteTime) != 0
 
-bool rangeIsAvailable = (
-     not na(rangeHigh) and
-     not na(rangeLow) and
-     not na(rangeOpeningTime))
+// Do not compare across missing candles, sessions, or an incomplete 5M bar.
+// The request publishes on a subsequent source bar; its close must still be
+// recent relative to the observing chart bar, not a stale pre-gap crossing.
+bool signalTimesAreValid = (
+     not na(closedFiveMinuteClose) and not na(precedingFiveMinuteClose) and
+     closedFiveMinuteCloseTime - closedFiveMinuteTime == fiveMinuteDurationMs and
+     precedingFiveMinuteCloseTime == closedFiveMinuteTime and
+     closedFiveMinuteTime >= rangeOpeningTime + openingRangeDurationMs and
+     f_calendarDay(closedFiveMinuteTime) == chartDay and
+     closedFiveMinuteCloseTime <= time_close and
+     time - closedFiveMinuteCloseTime < fiveMinuteDurationMs)
 
 // Upper breakout:
-// the previous 5-minute close was inside or at the range and the new close
+// the previous 5-minute close was at or below the upper border and the new close
 // finishes above the upper border.
 bool upperBreakout = (
      fiveMinuteSignalsAvailable and
      newConfirmedFiveMinuteCandle and
      rangeIsAvailable and
+     signalTimesAreValid and
      closedFiveMinuteClose > rangeHigh and
      precedingFiveMinuteClose <= rangeHigh)
 
 // Lower breakout:
-// the previous 5-minute close was inside or at the range and the new close
+// the previous 5-minute close was at or above the lower border and the new close
 // finishes below the lower border.
 bool lowerBreakout = (
      fiveMinuteSignalsAvailable and
      newConfirmedFiveMinuteCandle and
      rangeIsAvailable and
+     signalTimesAreValid and
      closedFiveMinuteClose < rangeLow and
      precedingFiveMinuteClose >= rangeLow)
 
@@ -296,8 +322,8 @@ if showLowerMarker
 //──────────────────────────────────────────────────────────────────────────────
 // Alert conditions
 //
-// The current-day filter applies only to visual markers.
-// Alerts remain active for all future sessions.
+// Marker visibility does not control alerts. Date/data guards apply to both.
+// Alerts remain eligible in future sessions once each day's range is valid.
 //──────────────────────────────────────────────────────────────────────────────
 
 alertcondition(
