@@ -37,6 +37,7 @@ they are not historical market performance or Pine executions.
 | M02 | Same command; independent 60m (4 samples) and 720m RTH (26 samples) ORB15 mapping examples | First snapshot is unavailable; last retains high100 | PASS; model illustrates mapping consequence, does not execute requests |
 | M03 | Same command; restricted parser reads actual `upperBreakout` / `lowerBreakout` conjunctions; H100/L90 and C/P boundary cases | Exact equality/non-crossing/suppression cases match; ten comparator/guard mutations rejected | 51 total PASS / 0 FAIL across M01–M03 |
 | L01 | `git diff --check`; PowerShell parser; relative Markdown link targets; strict UTF-8 source decode | No whitespace/parser/link errors | PASS; no Pine compiler claim |
+| L02 | `git worktree add --detach <temporary-path> e4b3a20`; rerun both suites; compare source SHA-256; `git status --porcelain=v1 --untracked-files=all` | Same candidate bytes and test results without local untracked/ignored dependencies | PASS: 57 static + 51 temporal, matching SHA-256, empty status; clean temporary checkout removed without force |
 | R01 | Fresh independent review of `git diff bc274e6`, source, tests and SPEC; reviewer reran S01/M03 | No unaddressed confirmed source defect | PASS at source-review layer; native blockers remain |
 
 Numerical predicates use exact integer fixture values (H100/L90, C101/100/89/90)
@@ -105,3 +106,9 @@ rights/provenance and licensing; these are distinct from the native blockers.
 Git closure is verified separately against the actual remote ref in the final
 report. The source hash above remains the stable test association across
 documentation-only commits; a report does not embed its own final commit hash.
+
+The clean-checkout source/test revision is
+`e4b3a20ccb97140710934448d409105f37664737`; subsequent evidence-only changes do
+not change the tested Pine or test scripts. Source and test files were scanned
+with the staged diff for credential patterns and reviewed for accidental private
+or generated content before commit. No credentials were found.
