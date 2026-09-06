@@ -3,14 +3,14 @@
 //──────────────────────────────────────────────────────────────────────────────
 // ORB Opening Range Box
 // Author: Yulien
-// Version: 1.0.0
+// Version: 1.1.0
 // Description: Automatically draws the opening range and provides confirmed
 // 5-minute breakout alerts above or below the range.
 //──────────────────────────────────────────────────────────────────────────────
 
 indicator(
-     title = "ORB Opening Range Box — by Yulien",
-     shorttitle = "ORB Box",
+     title = "ORB Opening Range Box v1.1.0 — by Yulien",
+     shorttitle = "ORB Box v1.1.0",
      overlay = true,
      max_boxes_count = 1,
      max_labels_count = 200)

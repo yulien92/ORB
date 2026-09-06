@@ -5,6 +5,8 @@ ORB Opening Range Box indicator by Yulien. It draws a confirmed 15-minute or
 30-minute opening range beginning at 09:30 in the symbol's exchange timezone
 and exposes confirmed five-minute close-crossing alerts.
 
+Current indicator version: `1.1.0`.
+
 This indicator provides market context. It is not an automatic trade-entry or
 trade-exit system.
 

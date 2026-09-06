@@ -211,9 +211,14 @@ Test-Contract -Name 'README separates TradingView runtime evidence' -Condition (
     (Select-String -LiteralPath $readmePath -Quiet -SimpleMatch 'Pine v6 compilation in TradingView') -and
     (Select-String -LiteralPath $readmePath -Quiet -SimpleMatch 'Live server alert delivery')
 )
-Test-Contract -Name 'Changelog records the unreleased hardening' -Condition (
+Test-Contract -Name 'Indicator identifies release version 1.1.0' -Condition (
+    $source.Contains('// Version: 1.1.0') -and
+    $source.Contains('title = "ORB Opening Range Box v1.1.0 — by Yulien"') -and
+    $source.Contains('shorttitle = "ORB Box v1.1.0"')
+)
+Test-Contract -Name 'Changelog records release 1.1.0 hardening' -Condition (
     (Test-Path -LiteralPath $changelogPath -PathType Leaf) -and
-    (Select-String -LiteralPath $changelogPath -Quiet -SimpleMatch '## Unreleased') -and
+    (Select-String -LiteralPath $changelogPath -Quiet -SimpleMatch '## [1.1.0] - 2026-09-04') -and
     (Select-String -LiteralPath $changelogPath -Quiet -SimpleMatch 'synthetic non-standard-chart')
 )
 

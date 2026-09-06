@@ -3,7 +3,7 @@
 All notable user-visible changes to the ORB Opening Range Box are documented in
 this file.
 
-## Unreleased
+## [1.1.0] - 2026-09-04
 
 ### Added
 
